@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Tile Hero</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#0f1216">
+<style>
+  :root{
+    --bg:#0f1216;
+    --panel:#171b22;
+    --accent:#3ad1a9;
+    --accent-2:#72a6ff;
+    --warn:#ffcc66;
+    --danger:#ff7a7a;
+    --muted:#a7b0be;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:#e9eef5;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;}
+  #app{display:flex;flex-direction:column;min-height:100%;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:linear-gradient(180deg,var(--panel),#0c0f13);position:sticky;top:0;z-index:5;border-bottom:1px solid #1f2630;}
+  header .title{font-weight:700;letter-spacing:.5px}
+  header .hud{display:flex;gap:10px;align-items:center;font-variant-numeric:tabular-nums;}
+  .pill{padding:6px 10px;border-radius:999px;background:#0b121a;border:1px solid #1f2630;font-size:13px;color:#dfe7f1;}
+  .btn{background:var(--accent);color:#0b121a;border:none;border-radius:12px;padding:14px 16px;font-weight:700;font-size:16px;box-shadow:0 4px 0 #279e82;transform:translateY(0);}
+  .btn:active{transform:translateY(2px);box-shadow:0 2px 0 #279e82;}
+  .btn.secondary{background:#2b323e;color:#e9eef5;box-shadow:none;border:1px solid #394354;}
+  main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;gap:16px;}
+  .card{width:100%;max-width:520px;background:var(--panel);border:1px solid #202634;border-radius:16px;padding:14px;box-shadow:0 10px 24px rgba(0,0,0,.25);}
+  .center{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .small{font-size:13px;color:var(--muted)}
+  .hidden{display:none !important}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;touch-action:none}
+  .slot{width:88px;height:88px;background:#0f1620;border:2px dashed #2a3442;border-radius:10px;position:relative}
+  .ghost{position:absolute;inset:0;border-radius:8px;opacity:.25}
+  .tile{width:84px;height:84px;border-radius:8px;background:linear-gradient(135deg,#b7d0ff,#7db1ff);box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-weight:800;color:#0b121a;position:relative;touch-action:none}
+  .tile[data-correct="false"]{outline:2px solid #ffadad}
+  .dragging{opacity:.9;transform:scale(1.04);z-index:3}
+  .dock{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+  canvas{touch-action:none;background:#0b1118;border:1px solid #1f2630;border-radius:14px;width:100%;height:340px;max-width:520px}
+  .toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#0c141c;border:1px solid #1f2630;padding:10px 14px;border-radius:10px;color:#cfe7ff;opacity:0;transition:opacity .25s}
+  .toast.show{opacity:1}
+  .progress{height:8px;background:#0d1420;border-radius:99px;overflow:hidden;border:1px solid #1f2630}
+  .progress>div{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));width:0%}
+  .stars{display:flex;gap:6px}
+  .star{width:22px;height:22px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
+  footer{padding:10px 12px;text-align:center;font-size:12px;color:#8893a3}
+  #err{position:fixed;top:0;left:0;right:0;background:#2b323e;color:#ffe3e3;padding:10px 14px;font-size:13px;border-bottom:1px solid #394354;display:none}
+</style>
+</head>
+<body>
+<div id="err"></div>
+<div id="app">
+  <header>
+    <div class="title">🧱 Tile Hero</div>
+    <div class="hud">
+      <div class="pill" id="stagePill">Stage: –</div>
+      <div class="pill">⏱ <span id="timer">00</span>s</div>
+      <div class="pill">⭐ <span id="score">0</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section id="intro" class="card center">
+      <h1 style="margin:6px 0 0">Become a <span style="color:var(--accent)">Tile Hero</span></h1>
+      <div class="small">Three quick mini‑games: <b>Prep</b>, <b>Set</b>, and <b>Grout</b>. Built for thumbs.</div>
+      <div class="progress" style="width:100%;max-width:420px"><div id="introProgress"></div></div>
+      <div class="row">
+        <button class="btn" id="playBtn">Play</button>
+        <button class="btn secondary" id="howBtn">How to Play</button>
+      </div>
+    </section>
+
+    <section id="howto" class="card hidden">
+      <div class="center">
+        <h2>How to play</h2>
+        <ol style="text-align:left;line-height:1.5;max-width:520px">
+          <li><b>Prep:</b> Swipe or tap to remove dust spots from the board. Clear them all before time runs out.</li>
+          <li><b>Set:</b> Drag tiles from the dock onto the 3×3 grid. Match the faint pattern to place each tile correctly.</li>
+          <li><b>Grout:</b> Trace along each grout line. Cover a segment by moving your finger across it.</li>
+        </ol>
+        <button class="btn" onclick="showScreen('intro')">Back</button>
+      </div>
+    </section>
+
+    <section id="stage" class="card hidden">
+      <div class="center">
+        <div id="stageName" style="font-weight:800"></div>
+        <canvas id="stageCanvas" width="520" height="340" class="hidden"></canvas>
+
+        <div id="setStage" class="hidden">
+          <div class="grid" id="targetGrid" style="margin-bottom:10px"></div>
+          <div class="dock" id="tileDock"></div>
+        </div>
+
+        <div class="row">
+          <button class="btn secondary" id="restartBtn">Restart Stage</button>
+          <button class="btn" id="skipBtn">Skip</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="results" class="card hidden center">
+      <h2>Job Complete</h2>
+      <div class="stars" id="stars"></div>
+      <div class="small">Score: <span id="finalScore">0</span></div>
+      <div class="row">
+        <button class="btn" id="againBtn">Play Again</button>
+        <button class="btn secondary" id="shareBtn">Share</button>
+      </div>
+      <div class="small" id="bestScoreLine"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <footer>© Tile Hero • v1.2 (PWA)</footer>
+</div>
+
+<script>
+  // Register service worker for PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(()=>{});
+    });
+  }
+</script>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const $all = s => Array.from(document.querySelectorAll(s));
+
+  // Safe storage
+  function safeStorage(){
+    try{
+      const k='__t'; localStorage.setItem(k,'1'); localStorage.removeItem(k);
+      return localStorage;
+    }catch(e){
+      return {getItem:()=>null,setItem:()=>{},removeItem:()=>{}};
+    }
+  }
+  const STORE = safeStorage();
+
+  const STATE = {
+    stageIndex: 0,
+    score: 0,
+    timer: 0,
+    timerId: null,
+    best: parseInt((STORE.getItem('tileHeroBest')||'0'),10)
+  };
+  const STAGES = ['Prep','Set','Grout'];
+  const STAGE_TIME = 30;
+
+  function showScreen(id){
+    ['intro','howto','stage','results'].forEach(sec => {
+      const el = document.getElementById(sec);
+      if(!el) return;
+      el.classList.toggle('hidden', sec!==id);
+    });
+  }
+
+  function setHUD(){
+    $('#stagePill').textContent = `Stage: ${STAGES[STATE.stageIndex]||'–'}`;
+    $('#score').textContent = STATE.score;
+    $('#timer').textContent = STATE.timer.toString().padStart(2,'0');
+  }
+
+  function startGame(){
+    STATE.stageIndex = 0;
+    STATE.score = 0;
+    $('#introProgress').style.width = '0%';
+    showToast('Let\\'s get that surface spotless.');
+    startStage();
+  }
+
+  function startStage(){
+    showScreen('stage');
+    $('#stageName').textContent = STAGES[STATE.stageIndex];
+    $('#setStage').classList.add('hidden');
+    $('#stageCanvas').classList.add('hidden');
+
+    STATE.timer = STAGE_TIME;
+    setHUD();
+    clearInterval(STATE.timerId);
+    STATE.timerId = setInterval(()=>{
+      STATE.timer--;
+      setHUD();
+      if(STATE.timer<=0){
+        clearInterval(STATE.timerId);
+        failStage();
+      }
+    },1000);
+
+    if(STAGES[STATE.stageIndex]==='Prep') prepStage();
+    else if(STAGES[STATE.stageIndex]==='Set') setStage();
+    else groutStage();
+  }
+
+  function nextStage(){
+    STATE.stageIndex++;
+    $('#introProgress').style.width = `${(STATE.stageIndex/3)*100}%`;
+    if(STATE.stageIndex>=STAGES.length){
+      return finishGame();
+    }
+    startStage();
+  }
+
+  function addScore(n){
+    STATE.score += n;
+    setHUD();
+  }
+
+  function finishGame(){
+    clearInterval(STATE.timerId);
+    showScreen('results');
+    $('#finalScore').textContent = STATE.score;
+    const starsEl = $('#stars');
+    starsEl.innerHTML = '';
+    const starCount = STATE.score>=750 ? 3 : STATE.score>=500 ? 2 : 1;
+    for(let i=0;i<3;i++){
+      const img = document.createElement('img');
+      img.className='star'; img.alt='star';
+      img.src = i<starCount ?
+        'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23ffd86b" d="M12 2l3.09 6.26L22 9.27l-5 4.9L18.18 22 12 18.56 5.82 22 7 14.17l-5-4.9 6.91-1.01z"/></svg>' :
+        'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23555" d="M12 2l3.09 6.26L22 9.27l-5 4.9L18.18 22 12 18.56 5.82 22 7 14.17l-5-4.9 6.91-1.01z"/></svg>';
+      starsEl.appendChild(img);
+    }
+    try{
+      const prev = parseInt(STORE.getItem('tileHeroBest')||'0',10);
+      if(STATE.score>prev){
+        STORE.setItem('tileHeroBest', STATE.score);
+        $('#bestScoreLine').textContent = `New best: ${STATE.score}`;
+      }else{
+        $('#bestScoreLine').textContent = `Best: ${prev}`;
+      }
+    }catch(e){
+      $('#bestScoreLine').textContent = '';
+    }
+  }
+
+  function failStage(){
+    showToast('Time! You can do this. Try again or skip.');
+  }
+
+  // ---------- Stage 1: PREP ----------
+  function prepStage(){
+    const canvas = $('#stageCanvas');
+    const ctx = canvas.getContext('2d');
+    $('#stageCanvas').classList.remove('hidden');
+
+    const W = canvas.width, H = canvas.height;
+    const spots = [];
+    const SPOT_R = 18;
+    const SPOT_N = 18;
+
+    function makeSpots(){
+      spots.length = 0;
+      for(let i=0;i<SPOT_N;i++){
+        const x = Math.random()*(W-2*SPOT_R)+SPOT_R;
+        const y = Math.random()*(H-2*SPOT_R)+SPOT_R;
+        spots.push({x,y,alive:true});
+      }
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      const grd = ctx.createLinearGradient(0,0,W,H);
+      grd.addColorStop(0,'#0f1620'); grd.addColorStop(1,'#0b1118');
+      ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle = 'rgba(170,200,255,.06)';
+      for(let i=1;i<6;i++){
+        ctx.beginPath(); ctx.moveTo((W/6)*i,0); ctx.lineTo((W/6)*i,H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,(H/6)*i); ctx.lineTo(W,(H/6)*i); ctx.stroke();
+      }
+      spots.forEach(s=>{
+        if(!s.alive) return;
+        ctx.beginPath();
+        ctx.fillStyle='rgba(180,190,210,.85)';
+        ctx.arc(s.x,s.y,SPOT_R,0,Math.PI*2);
+        ctx.fill();
+        ctx.beginPath(); ctx.fillStyle='rgba(255,255,255,.25)'; ctx.arc(s.x-6,s.y-6,SPOT_R*.6,0,Math.PI*2); ctx.fill();
+      });
+    }
+
+    function touch(e){
+      const rect = canvas.getBoundingClientRect();
+      const points = [];
+      if(e.touches){
+        for(const t of e.touches){ points.push({x:(t.clientX-rect.left)* (W/rect.width), y:(t.clientY-rect.top)*(H/rect.height)}); }
+      }else{
+        points.push({x:(e.clientX-rect.left)* (W/rect.width), y:(e.clientY-rect.top)*(H/rect.height)});
+      }
+      points.forEach(p=>{
+        spots.forEach(s=>{
+          if(!s.alive) return;
+          const dx=p.x-s.x, dy=p.y-s.y;
+          if(Math.hypot(dx,dy)<SPOT_R+8){
+            s.alive=false;
+            addScore(10);
+          }
+        });
+      });
+      if(spots.every(s=>!s.alive)){
+        addScore(STATE.timer*5);
+        showToast('Surface prepped!');
+        clearStageListeners();
+        setTimeout(nextStage,450);
+      }
+      e.preventDefault();
+    }
+
+    function clearStageListeners(){
+      canvas.onpointerdown = canvas.onpointermove = null;
+      canvas.ontouchstart = canvas.ontouchmove = null;
+      canvas.onmousedown = canvas.onmousemove = null;
+    }
+
+    makeSpots();
+    draw();
+    let raf;
+    const loop = ()=>{ draw(); raf=requestAnimationFrame(loop); };
+    loop();
+
+    canvas.addEventListener('pointerdown',touch);
+    canvas.addEventListener('pointermove',touch);
+  }
+
+  // ---------- Stage 2: SET ----------
+  function setStage(){
+    $('#setStage').classList.remove('hidden');
+    const grid = $('#targetGrid');
+    const dock = $('#tileDock');
+    grid.innerHTML=''; dock.innerHTML='';
+
+    const pattern = [0,1,2,3,4,5,6,7,8];
+    pattern.forEach((id,i)=>{
+      const slot = document.createElement('div');
+      slot.className='slot';
+      slot.dataset.id = id;
+      const ghost = document.createElement('div');
+      ghost.className='ghost';
+      ghost.style.background = id%2===0
+        ? 'linear-gradient(135deg,#b7d0ff,#7db1ff)'
+        : 'linear-gradient(135deg,#ffe3a3,#ffd86b)';
+      slot.appendChild(ghost);
+      grid.appendChild(slot);
+    });
+
+    const tiles = pattern.slice().sort(()=>Math.random()-.5);
+    tiles.forEach(id=>{
+      const t = document.createElement('div');
+      t.className='tile';
+      t.textContent = id+1;
+      t.dataset.id = id;
+      t.dataset.correct = 'false';
+      t.style.background = id%2===0
+        ? 'linear-gradient(135deg,#ffe3a3,#ffd86b)'
+        : 'linear-gradient(135deg,#b7d0ff,#7db1ff)';
+      dock.appendChild(t);
+    });
+
+    let dragEl=null, startX=0, startY=0, origParent=null, placeholder=null;
+
+    function onDown(e){
+      const target = e.target.closest('.tile');
+      if(!target) return;
+      dragEl = target;
+      origParent = target.parentElement;
+      startX = e.clientX; startY = e.clientY;
+      const rect = target.getBoundingClientRect();
+      target.style.position='fixed';
+      target.style.left = rect.left+'px';
+      target.style.top = rect.top+'px';
+      target.style.width = rect.width+'px';
+      target.style.height = rect.height+'px';
+      target.classList.add('dragging');
+      placeholder = document.createElement('div');
+      placeholder.style.width = rect.width+'px';
+      placeholder.style.height = rect.height+'px';
+      origParent.insertBefore(placeholder, target.nextSibling);
+      document.addEventListener('pointermove',onMove);
+      document.addEventListener('pointerup',onUp,{once:true});
+      e.preventDefault();
+    }
+    function onMove(e){
+      if(!dragEl) return;
+      const dx = e.clientX-startX, dy=e.clientY-startY;
+      dragEl.style.left = (parseFloat(dragEl.style.left)+dx)+'px';
+      dragEl.style.top = (parseFloat(dragEl.style.top)+dy)+'px';
+      startX = e.clientX; startY = e.clientY;
+    }
+    function onUp(e){
+      if(!dragEl) return;
+      const dropTarget = document.elementFromPoint(e.clientX,e.clientY);
+      const slot = dropTarget && dropTarget.closest('.slot');
+      if(slot){
+        if(!slot.querySelector('.tile')){
+          slot.appendChild(dragEl);
+          dragEl.style.position='';
+          dragEl.style.left=''; dragEl.style.top=''; dragEl.style.width=''; dragEl.style.height='';
+          const correct = slot.dataset.id === dragEl.dataset.id;
+          dragEl.dataset.correct = correct ? 'true' : 'false';
+          addScore(correct? 20 : 0);
+          if(correct) showToast('Snapped in!');
+        }else{
+          dock.appendChild(dragEl);
+          dragEl.style.position=''; dragEl.style.left=''; dragEl.style.top=''; dragEl.style.width=''; dragEl.style.height='';
+        }
+      }else{
+        dock.appendChild(dragEl);
+        dragEl.style.position=''; dragEl.style.left=''; dragEl.style.top=''; dragEl.style.width=''; dragEl.style.height='';
+      }
+      placeholder && placeholder.remove();
+      dragEl.classList.remove('dragging');
+      dragEl=null;
+      if($all('.slot').every(s=>{
+        const t = s.querySelector('.tile');
+        return t && t.dataset.id===s.dataset.id;
+      })){
+        addScore(STATE.timer*7);
+        showToast('Tiles set!');
+        setTimeout(nextStage,450);
+      }
+      document.removeEventListener('pointermove',onMove);
+    }
+
+    document.addEventListener('pointerdown',onDown,{passive:false});
+    const cleanup = ()=>{
+      document.removeEventListener('pointerdown',onDown);
+      document.removeEventListener('pointermove',onMove);
+    };
+    const mo = new MutationObserver(()=>{
+      if($('#setStage').classList.contains('hidden')) cleanup();
+    });
+    mo.observe($('#setStage').parentElement,{attributes:true,attributeFilter:['class']});
+  }
+
+  // ---------- Stage 3: GROUT ----------
+  function groutStage(){
+    const canvas = $('#stageCanvas');
+    const ctx = canvas.getContext('2d');
+    $('#stageCanvas').classList.remove('hidden');
+
+    const W = canvas.width, H = canvas.height;
+    const margin = 40;
+    const gx0 = margin, gy0 = margin, gx1 = W-margin, gy1 = H-margin;
+
+    const cols = 3, rows = 3;
+    const segments = [];
+    for(let i=0;i<=cols;i++){
+      const x = gx0 + i*(gx1-gx0)/cols;
+      segments.push({x1:x,y1:gy0,x2:x,y2:gy1,hit:false});
+    }
+    for(let j=0;j<=rows;j++){
+      const y = gy0 + j*(gy1-gy0)/rows;
+      segments.push({x1:gx0,y1:y,x2:gx1,y2:y,hit:false});
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      const grd = ctx.createLinearGradient(0,0,W,H);
+      grd.addColorStop(0,'#0f1620'); grd.addColorStop(1,'#0b1118');
+      ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+
+      const tw = (gx1-gx0)/cols, th = (gy1-gy0)/rows;
+      for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+          ctx.fillStyle = (r+c)%2===0 ? '#b7d0ff' : '#ffd86b';
+          ctx.fillRect(gx0+c*tw+4, gy0+r*th+4, tw-8, th-8);
+        }
+      }
+      segments.forEach(s=>{
+        ctx.strokeStyle = s.hit ? 'rgba(58,209,169,.95)' : 'rgba(200,210,225,.35)';
+        ctx.lineWidth = s.hit ? 10 : 6;
+        ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(s.x1,s.y1); ctx.lineTo(s.x2,s.y2); ctx.stroke();
+      });
+    }
+
+    function touch(e){
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = W/rect.width, scaleY = H/rect.height;
+      const points = [];
+      if(e.touches){
+        for(const t of e.touches){ points.push({x:(t.clientX-rect.left)*scaleX, y:(t.clientY-rect.top)*scaleY}); }
+      }else{
+        points.push({x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY});
+      }
+      const THRESH = 14;
+      points.forEach(p=>{
+        segments.forEach(s=>{
+          if(s.hit) return;
+          const A = {x:s.x1,y:s.y1}, B={x:s.x2,y:s.y2};
+          const ABx=B.x-A.x, ABy=B.y-A.y;
+          const APx=p.x-A.x, APy=p.y-A.y;
+          const ab2 = ABx*ABx + ABy*ABy;
+          const t = Math.max(0,Math.min(1,(APx*ABx+APy*ABy)/ab2));
+          const cx=A.x+t*ABx, cy=A.y+t*ABy;
+          const d = Math.hypot(p.x-cx, p.y-cy);
+          if(d<THRESH){
+            s.hit=true;
+            addScore(15);
+          }
+        });
+      });
+      if(segments.every(s=>s.hit)){
+        addScore(STATE.timer*6);
+        showToast('Grouting done! Smooth as butter.');
+        clearStageListeners();
+        setTimeout(finishGame,500);
+      }
+      e.preventDefault();
+    }
+
+    function clearStageListeners(){
+      canvas.onpointerdown = canvas.onpointermove = null;
+      canvas.ontouchstart = canvas.ontouchmove = null;
+      canvas.onmousedown = canvas.onmousemove = null;
+    }
+
+    draw();
+    let raf;
+    const loop = ()=>{ draw(); raf=requestAnimationFrame(loop); };
+    loop();
+
+    canvas.addEventListener('pointerdown',touch);
+    canvas.addEventListener('pointermove',touch);
+  }
+
+  function showToast(msg){
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._id);
+    t._id = setTimeout(()=>t.classList.remove('show'), 1200);
+  }
+
+  // Buttons
+  $('#playBtn')?.addEventListener('click',()=>{ showScreen('stage'); startGame(); });
+  $('#howBtn')?.addEventListener('click',()=> showScreen('howto'));
+  $('#againBtn')?.addEventListener('click',()=>{ showScreen('intro'); });
+  $('#shareBtn')?.addEventListener('click',async ()=>{
+    const text = `I just finished Tile Hero with ${STATE.score} pts!`;
+    try{
+      if(navigator.share){
+        await navigator.share({title:'Tile Hero',text});
+      }else if(navigator.clipboard){
+        await navigator.clipboard.writeText(text);
+        showToast('Copied result to clipboard!');
+      }
+    }catch{}
+  });
+  $('#restartBtn')?.addEventListener('click',()=>{ showToast('Restarting stage…'); startStage(); });
+  $('#skipBtn')?.addEventListener('click',()=>{ showToast('Skipping…'); clearInterval(STATE.timerId); nextStage(); });
+
+  // Init
+  showScreen('intro');
+  setHUD();
+})();
+</script>
+</body>
+</html>
